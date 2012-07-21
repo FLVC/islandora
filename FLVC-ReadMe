@@ -1,0 +1,43 @@
+The following 
+
+    /etc/drupal7/all/modules/islandora_content_model_forms
+    /etc/drupal7/all/modules/islandora
+    /etc/drupal7/all/modules/islandora_solr_search
+    /etc/drupal7/all/modules/islandora_solr_views
+    /etc/drupal7/all/modules/islandora_solution_pack_collection
+    /etc/drupal7/all/modules/islandora_solution_pack_image
+    /etc/drupal7/all/modules/islandora_solution_pack_pdf
+    /etc/drupal7/all/modules/islandora_xml_forms
+    /etc/drupal7/all/modules/objective_forms
+    /etc/drupal7/all/modules/php_lib
+
+    /etc/drupal7/all/libraries/tuque
+
+have all been forked from the github Islandora account to my personal github account, grf.
+I made a branch called flvc from the 7.x branches (except for the tuque library, which was branched from 1.x)
+
+We need work in the flvc branch, pusing it back up to grf@github.com.
+
+We also need to pull in the changes from the original Islandora 7.x (1.x for tuque) repos every now and then - those repositories are labeled 'upstream'
+
+Of course we don't want to do that blindly; first we'll merge into our copy of the 7.x repos first to insepect the differences..
+
+     git checkout 7.x
+     git fetch upstream
+     git merge upstream/7.x
+     git push
+
+     ... check it out ... we've got a copy of the Islandora guy's development version on-line
+
+
+When we're sure it's workable: do
+
+     git checkout flvc
+     git fetch upstream
+     git merge upstream/7.x
+
+     ...work with it a bit...
+
+     git push
+
+And we do this for each of the 11 modules/tool sets...
