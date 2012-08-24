@@ -29,7 +29,6 @@ Of course we don't want to do that blindly; first we'll merge into our copy of t
 
      ... check it out ... we've got a copy of the Islandora guy's development version on-line
 
-
 When we're sure it's workable: do
 
      git checkout flvc
