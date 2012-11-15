@@ -1,36 +1,51 @@
 <?php
 
 /**
- * @file datastream.inc 
+ * @file
+ * This file contains the admin form and callback functions for datastream manipulations.
  */
 
 define('DS_COMP_STREAM', 'DS-COMPOSITE-MODEL');
+
 /**
+ * Callback function to view or download a datastream.
  *
  * @global object $user
  * @param string $object_id
  * @param string $dsid
- * @return stream 
+ * @return stream
  *  prints datastream to browser
  */
 function islandora_view_datastream($object, $dsid, $method = 'view') {
   // if the object exists but the datastream doesn't
-  if(!isset($object[$dsid])) {
+  if (!isset($object[$dsid])) {
     return drupal_not_found();
   }
-
+  header_remove('Cache-Control');
+  header_remove('Expires');
   header('Content-type: ' . $object[$dsid]->mimetype);
-  if($object[$dsid]->controlGroup == 'M' || $object[$dsid]->controlGroup == 'X') {
+  if ($object[$dsid]->controlGroup == 'M' || $object[$dsid]->controlGroup == 'X') {
     header('Content-length: ' . $object[$dsid]->size);
   }
 
   if ($method == 'download') {
     header("Content-Disposition: attachment; filename=\"" . $object[$dsid]->label);
   }
-  print($object[$dsid]->content);
+
+  // Disable page caching
+  drupal_page_is_cacheable(FALSE);
+
+  // Try not to load the file into PHP memory
+  $file = drupal_tempnam(file_directory_temp(), 'islandora');
+  $object[$dsid]->getContent($file);
+  readfile($file);
+  drupal_unlink($file);
   exit();
 }
 
+/**
+ * For a given object, return all parent collections.
+ */
 function islandora_datastream_get_parents($islandora_object) {
   $parent_collections = array();
 
@@ -45,7 +60,7 @@ function islandora_datastream_get_parents($islandora_object) {
   }
   $collections = array_merge($collections1, $collections2);
 
-  foreach($collections as $collection) {
+  foreach ($collections as $collection) {
     try {
       $pid = $collection['object']['value'];
       $object = $repository->getObject($collection['object']['value']);
@@ -55,7 +70,9 @@ function islandora_datastream_get_parents($islandora_object) {
       $parent_collections[$pid]['label'] = $object->label;
       $parent_collections[$pid]['label_link'] = l($parent_collections[$pid]['label'], $parent_collections[$pid]['url']);
     }
-    catch (RepositoryException $e) {}
+    catch (RepositoryException $e) {
+
+    }
   }
 
   return $parent_collections;
@@ -65,13 +82,13 @@ function islandora_datastream_get_parents($islandora_object) {
  *
  * @param array $arr
  *   an array of dsids that are defined by this objects cmodels
- * @param string $ds_comp_stream 
+ * @param string $ds_comp_stream
  *   the dscomposite stream as xml
  */
 function islandora_get_defined_dsids_array(&$arr, $ds_comp_stream) {
   $sxml = new SimpleXMLElement($ds_comp_stream);
   foreach ($sxml->dsTypeModel as $ds) {
-    //$arr[$ds['ID']] 
+    //$arr[$ds['ID']]
     $mimes = array();
     foreach ($ds->form as $form) {
       $mimetype = (string) $form['MIME'];
@@ -88,13 +105,13 @@ function islandora_get_defined_dsids_array(&$arr, $ds_comp_stream) {
  *
  * @global type $user
  * @param string $object_id
- * @return string|array 
+ * @return string|array
  */
 function islandora_get_unused_dsids($object) {
 
   $defined_dsids = array();
 
-  if(!$object) {
+  if (!$object) {
     return $defined_dsids;
   }
 
@@ -113,7 +130,7 @@ function islandora_get_unused_dsids($object) {
     }
   }
   foreach ($defined_dsids as $key => $value) {
-    if (isset($fedora_object[$key])) {
+    if (isset($object[$key])) {
       unset($defined_dsids[$key]); //ds exists in the object so don't show in the dropdown
     }
   }
@@ -124,11 +141,11 @@ function islandora_get_unused_dsids($object) {
  * buids the default add datastream form
  * @param string $object_id
  * @param array $form_state
- * @return array 
+ * @return array
  *  a form ready to be rendered with a call to Drupal render
  */
 function islandora_get_add_datastream_form($object, &$form_state) {
-  $unused_dsids = islandora_get_unused_dsids($object); 
+  $unused_dsids = islandora_get_unused_dsids($object);
   $form = array();
   $form['add_fieldset'] = array(
     '#type' => 'fieldset',
@@ -168,9 +185,9 @@ function islandora_get_add_datastream_form($object, &$form_state) {
   );
 
   if (!empty($unused_dsids)) {
-    $dsidsForForm = array();
+    $dsids_for_form = array();
     foreach ($unused_dsids as $key => $value) {
-      $dsidsForForm[$key] = $key;
+      $dsids_for_form[$key] = $key;
     }
     $form['add_fieldset']['stream_id'] = array(
       '#type' => 'select',
@@ -179,7 +196,7 @@ function islandora_get_add_datastream_form($object, &$form_state) {
       '#weight' => '-1',
       '#description' => t('Datastream IDs defined by the content model.'),
     );
-    $form['add_fieldset']['stream_id']['#options'] = $dsidsForForm;
+    $form['add_fieldset']['stream_id']['#options'] = $dsids_for_form;
   }
   else {
     $form['add_fieldset']['stream_id'] = array(
@@ -201,7 +218,7 @@ function islandora_get_add_datastream_form($object, &$form_state) {
  *   Drupal user
  * @param array $form
  * @param array $form_state
- * @return type 
+ * @return type
  */
 function islandora_add_datastream_form_submit($form, &$form_state) {
   global $base_url;
@@ -212,7 +229,7 @@ function islandora_add_datastream_form_submit($form, &$form_state) {
 
   module_load_include('inc', 'islandora', 'includes/mime.detect');
   $mimetype = new MimeDetect();
-  
+
   $file = $form_state['values']['add-stream-file-location'];
   $file = drupal_realpath($file);
 
@@ -220,11 +237,11 @@ function islandora_add_datastream_form_submit($form, &$form_state) {
   $dsid = $form_state['values']['stream_id'];
   $ds_label = $form_state['values']['stream_label'];
   $dformat = $mimetype->getMimeType($file);
-  $controlGroup = "M";
+  $control_group = "M";
 
   try {
     $fedora_object = islandora_object_load($object_id);
-    $ds = $fedora_object->constructDatastream($dsid, $controlGroup);
+    $ds = $fedora_object->constructDatastream($dsid, $control_group);
     $ds->label = $ds_label;
     $ds->mimetype = $dformat;
     $ds->setContentFromFile($file);
@@ -235,16 +252,16 @@ function islandora_add_datastream_form_submit($form, &$form_state) {
     drupal_set_message(t('@message', array('@message' => check_plain($e->getMessage()))), 'error');
     return;
   }
-  drupal_set_message("Successfully Added Datastream!");
+  drupal_set_message(t("Successfully Added Datastream!"));
   drupal_goto("islandora/object/$object_id");
 }
 
 /**
- * validates this datastream id against its allowed mimetypes in the dscomposite 
+ * validates this datastream id against its allowed mimetypes in the dscomposite
  * of its content models.
  * @param array $form
  * @param array $form_state
- * @return boolean 
+ * @return boolean
  */
 function islandora_add_datastream_form_validate($form, &$form_state) {
   module_load_include('inc', 'islandora', 'includes/mime.detect');
@@ -254,8 +271,8 @@ function islandora_add_datastream_form_validate($form, &$form_state) {
     return;
   }
   $dsid = $form_state['values']['stream_id'];
-  $dsLabel = $form_state['values']['stream_label'];
-  if (strlen($dsid) > 64) {
+  $ds_label = $form_state['values']['stream_label'];
+  if (drupal_strlen($dsid) > 64) {
     form_set_error('', t('Data stream ID cannot be more than 64 characters.'));
     return FALSE;
   }
@@ -263,11 +280,11 @@ function islandora_add_datastream_form_validate($form, &$form_state) {
     form_set_error('', t("Data stream ID (@dsid) has to start with a letter.", array('@dsid' => check_plain($dsid))));
     return FALSE;
   }
-  if (strlen($dsLabel) > 64) {
+  if (drupal_strlen($ds_label) > 64) {
     form_set_error('', t('Data stream Label cannot be more than 64 characters.'));
     return FALSE;
   }
-  if (strpos($dsLabel, '/')) {
+  if (strpos($ds_label, '/')) {
     form_set_error('', t('Data stream Label cannot contain a "/".'));
     return FALSE;
   }
@@ -275,7 +292,7 @@ function islandora_add_datastream_form_validate($form, &$form_state) {
   $object_id = $form_state['values']['pid'];
   $fedora_object = islandora_object_load($object_id);
 
-  if(isset($fedora_object[$dsid])) {
+  if (isset($fedora_object[$dsid])) {
     form_set_error('', t('Data stream ID already exists in object.'));
     return FALSE;
   }
@@ -283,7 +300,7 @@ function islandora_add_datastream_form_validate($form, &$form_state) {
   $mimetype = new MimeDetect();
   $object = islandora_object_load($form_state['values']['pid']);
   $unused_dsids = islandora_get_unused_dsids($object);
-  if(isset($unused_dsids[$dsid])) {
+  if (isset($unused_dsids[$dsid])) {
     $types_allowed = $unused_dsids[$dsid];
     $arr = array();
     foreach ($types_allowed as $type) {
@@ -291,11 +308,11 @@ function islandora_add_datastream_form_validate($form, &$form_state) {
     }
   }
   else {
-    // todo: this is unsafe, should probably be fixed see:
+    // @TODO: this is unsafe, should probably be fixed see:
     // http://api.drupal.org/api/drupal/includes!file.inc/function/file_save_upload/7
     $arr = array();
   }
-  
+
 
   $file = file_save_upload('add-stream-file-location', array('file_validate_extensions' => $arr));
   if ($file) {
@@ -312,10 +329,13 @@ function islandora_add_datastream_form_validate($form, &$form_state) {
  * buids the default add datastream form
  * @param string $object_id
  * @param array $form_state
- * @return array 
+ * @return array
  *  a form ready to be rendered with a call to Drupal render
  */
 function islandora_add_datastream_form($form, &$form_state, $object) {
+  // Ensure we're loaded, in case AJAX stuff is ever added.
+  form_load_include($form_state, 'inc', 'islandora', 'includes/datastream');
+
   $unused_dsids = islandora_get_unused_dsids($object); //$defined_dsids;
   $form = array();
   $form['add_fieldset'] = array(
@@ -356,19 +376,21 @@ function islandora_add_datastream_form($form, &$form_state, $object) {
   );
 
   $unused_dsids = islandora_get_unused_dsids($object);
-  $dsidsForForm = '';
+  $dsids_for_form = '';
   $i = 0;
   foreach ($unused_dsids as $key => $value) {
-    if($i++) {
-      $dsidsForForm .= ", ";
+    if ($i++) {
+      $dsids_for_form .= ", ";
     }
-    $dsidsForForm .= "'$key'";
+    $dsids_for_form .= "'$key'";
   }
 
   $form['add_fieldset']['stream_id'] = array(
     '#title' => 'Datastream ID',
     '#required' => 'TRUE',
-    '#description' => t('An ID for this stream that is unique to this object. Must start with a letter and contain only alphanumeric characters and dashes and underscores. Datastreams that are defined by the content model dont currently exist: <b>' . $dsidsForForm . '</b>.'),
+    '#description' => t('An ID for this stream that is unique to this object. Must start with a letter and contain only alphanumeric characters and dashes and underscores. Datastreams that are defined by the content model don\'t currently exist: <b>@unused_dsids</b>.', array(
+      '@unused_dsids' => $dsids_for_form,
+    )),
     '#type' => 'textfield',
     '#weight' => -1,
     '#autocomplete_path' => "islandora/object/$object->id/manage/datastreams/add/autocomplete",
@@ -379,13 +401,13 @@ function islandora_add_datastream_form($form, &$form_state, $object) {
 function islandora_datastream_autocomplete_callback($object, $string = '') {
   $dsids = islandora_get_unused_dsids($object);
   $output = array();
-  foreach($dsids as $id => $ds) {
-    if(trim($string) == '') {
+  foreach ($dsids as $id => $ds) {
+    if (trim($string) == '') {
       $output[$id] = $id;
     }
     else {
       $ret = stripos($id, $string);
-      if($ret !== FALSE) {
+      if ($ret !== FALSE) {
         $output[$id] = $id;
       }
     }
@@ -397,7 +419,7 @@ function islandora_datastream_get_human_readable_size($ds) {
   module_load_include('inc', 'islandora', 'includes/utilities');
 
   // we return - if we don't have a size
-  if($ds->controlGroup == 'M' || $ds->controlGroup == 'X') {
+  if ($ds->controlGroup == 'M' || $ds->controlGroup == 'X') {
     return islandora_convert_bytes_to_human_readable($ds->size);
   }
   else {
@@ -406,7 +428,7 @@ function islandora_datastream_get_human_readable_size($ds) {
 }
 
 function islandora_datastream_get_url($ds, $type = 'download') {
-  if($ds->controlGroup == 'R') {
+  if ($ds->controlGroup == 'R') {
     return $ds->url;
   }
   else {
@@ -417,7 +439,7 @@ function islandora_datastream_get_url($ds, $type = 'download') {
 function islandora_datastream_get_delete_link($ds) {
   $datastreams = module_invoke_all('islandora_undeletable_datastreams', $ds->parent->models);
 
-  if(in_array($ds->id, $datastreams)) {
+  if (in_array($ds->id, $datastreams)) {
     return '';
   }
   else {
@@ -458,7 +480,7 @@ function islandora_edit_datastream($object, $ds_id) {
   }
 }
 
-//@TODO: theme / preprocess
+// @TODO: theme / preprocess
 function islandora_edit_datastream_registry_render($edit_registry) {
   $output = array(
     '#type' => 'markup',
