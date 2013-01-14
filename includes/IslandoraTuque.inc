@@ -2,6 +2,7 @@
 
 /**
  * @file
+ *
  * This file contains a class to include the Tuque php library.
  */
 
@@ -77,11 +78,12 @@ class IslandoraTuque {
     }
 
     if (self::exists()) {
-      $this->connection = new RepositoryConnection($url, $user_string, $pass_string);
+      module_load_include('inc', 'islandora', 'includes/IslandoraTuqueWrapper');
+      $this->connection = new IslandoraRepositoryConnection($url, $user_string, $pass_string);
       $this->connection->reuseConnection = TRUE;
-      $this->api = new FedoraApi($this->connection);
-      $this->cache = new SimpleCache();
-      $this->repository = new FedoraRepository($this->api, $this->cache);
+      $this->api = new IslandoraFedoraApi($this->connection);
+      $this->cache = new IslandoraSimpleCache();
+      $this->repository = new IslandoraFedoraRepository($this->api, $this->cache);
     }
   }
 
@@ -96,4 +98,3 @@ class IslandoraTuque {
     drupal_set_message(filter_xss($message), 'error', FALSE);
   }
 }
-

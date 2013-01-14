@@ -155,17 +155,15 @@ function hook_islandora_object_alter($fedora_object) {}
  *
  * @param type $islandora_object
  *   A Tuque FedoraObject
- * @param array $content_models
- * @param string $collection_pid
  */
-function hook_islandora_ingest_pre_ingest($islandora_object, $content_models, $collection_pid) {}
+function hook_islandora_ingest_pre_ingest($islandora_object) {}
 
 /**
  * Allow modification of objects of a certain content model before ingesting.
  *
  * @see hook_islandora_ingest_pre_ingest()
  */
-function hook_CMODEL_PID_islandora_ingest_pre_ingest($islandora_object, $content_models, $collection_pid) {}
+function hook_CMODEL_PID_islandora_ingest_pre_ingest($islandora_object) {}
 
 /**
  * Allow modules to setup for the purge of a datastream.
@@ -218,3 +216,53 @@ function hook_islandora_required_objects() {}
  * @see islandora_get_viewer_callback()
  */
 function hook_islandora_viewer_info() {}
+
+
+/**
+ * Returns a list of datastreams that are determined to be undeletable.
+ */
+function hook_islandora_undeletable_datastreams(array $models) {}
+
+/**
+ * Define steps used in the islandora_ingest_form() ingest process.
+ *
+ * @param array $form_state
+ *   An array containing the form_state, on which infomation from step storage
+ *   might be extracted.  Note that the 
+ *
+ * @return array
+ *   An associative array of associative arrays which define each step in the
+ *   ingest process.  Each step should consist of a unique name mapped to an
+ *   array of properties (keys) including:
+ *   - type: The type of step.  Currently, only "form" is implemented.
+ *   - weight: The "weight" of this step--heavier(/"larger") values sink to the
+ *     end of the process while smaller(/"lighter") values are executed first.
+ *   - form_id: The form building function to call to get the form structure
+ *     for this step.
+ *   - args: An array of arguments to pass to the form building function.
+ *   And may optionally include both:
+ *   - module: A module from which we want to load an include.
+ *   - file: A file to include (relative to the module's path, including the
+ *     file's extension).
+ */
+function hook_islandora_ingest_steps(array $form_state) {
+  return array(
+    'my_cool_step_definition' => array(
+      'type' => 'form',
+      'weight' => 1,
+      'form_id' => 'my_cool_form',
+      'args' => array('arg_one', 'numero deux'),
+    ),
+  );
+}
+/**
+ * Content model specific version of hook_islandora_ingest_steps().
+ *
+ * XXX: Content models are not selected in a generic manner. Currently, this
+ *   gets called for every content model in the "configuration", yet the
+ *   configuration never changes.  We should determine a consistent way to bind
+ *   content models, so as to consistently be able to build steps.
+ *
+ * @see hook_islandora_ingest_steps()
+ */
+function hook_CMODEL_PID_islandora_ingest_steps(array $form_state) {}
