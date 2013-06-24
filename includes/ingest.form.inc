@@ -97,7 +97,8 @@ function islandora_ingest_form_init_form_state_storage(array &$form_state, array
 function islandora_ingest_form_prepare_new_object(array $configuration) {
   module_load_include('inc', 'islandora', 'includes/utilities');
   // ID is more specific than namespace so it will take precedence.
-  $id = isset($configuration['namespace']) ? $configuration['namespace'] : 'islandora';
+  //$id = isset($configuration['namespace']) ? $configuration['namespace'] : 'islandora';
+  $id = isset($configuration['namespace']) ? $configuration['namespace'] : islandora_get_namespace(variable_get('islandora_repository_pid', 'islandora:root'));
   $id = isset($configuration['id']) ? $configuration['id'] : $id;
   $label = isset($configuration['label']) ? $configuration['label'] : 'New Object';
   $relationship_map = function($o) {
