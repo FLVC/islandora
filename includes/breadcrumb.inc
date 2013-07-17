@@ -95,6 +95,18 @@ function islandora_get_breadcrumbs_recursive($pid, FedoraRepository $repository,
       $parent = $results[0]['parentObject']['value'];
       $this_title = $results[0]['title']['value'];
 
+      $root_namespace = islandora_get_namespace($root);
+      if ((count($results) > 1)&&(islandora_get_namespace($parent) != $root_namespace)) {
+          $root_namespace = islandora_get_namespace($root);
+          for ($i=0; $i<count($results); $i++) {
+              if (islandora_get_namespace($results[$i]['parentObject']['value']) == $root_namespace) {
+                  $parent = $results[$i]['parentObject']['value'];
+                  $this_title = $results[$i]['title']['value'];
+                  break;
+              }
+          }
+      }
+
       if (empty($this_title)) {
         $this_title = t('-');
       }
