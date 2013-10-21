@@ -220,9 +220,9 @@ function islandora_preprocess_islandora_objects(array &$variables) {
     $url = "islandora/object/{$o->id}";
     // adding code to display isPageNumber for page objects
     $title = $o->label;
-    if ($o->models = 'islandora:pageCModel') {
-      $title_array = $o->relationships->get(ISLANDORA_RELS_EXT_URI, 'isPageNumber');
-      $title = $title_array[0]['object']['value'];
+    $title_array = $o->relationships->get(ISLANDORA_RELS_EXT_URI, 'isPageNumber');
+    if (count($title_array) > 0) {
+        $title = $title_array[0]['object']['value'];
     }
     $link_options = array('html' => TRUE, 'attributes' => array('title' => $o->label));
     $img = islandora_datastream_access(ISLANDORA_VIEW_OBJECTS, $o['TN']) ?
