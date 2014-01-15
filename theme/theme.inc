@@ -218,11 +218,13 @@ function islandora_preprocess_islandora_objects(array &$variables) {
   $map_objects = function($o) {
     $o = islandora_object_load($o);
     $url = "islandora/object/{$o->id}";
-    // adding code to display isPageNumber for page objects
+    // adding code to display isPageNumber for book page objects
     $title = $o->label;
-    $title_array = $o->relationships->get(ISLANDORA_RELS_EXT_URI, 'isPageNumber');
-    if (count($title_array) > 0) {
-        $title = $title_array[0]['object']['value'];
+    if (in_array('islandora:pageCModel', $o->models)) {
+        $title_array = $o->relationships->get(ISLANDORA_RELS_EXT_URI, 'isPageNumber');
+        if (count($title_array) > 0) {
+            $title = $title_array[0]['object']['value'];
+        }
     }
     $link_options = array('html' => TRUE, 'attributes' => array('title' => $o->label));
     $img = islandora_datastream_access(ISLANDORA_VIEW_OBJECTS, $o['TN']) ?
