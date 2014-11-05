@@ -1577,9 +1577,12 @@ function islandora_entity_property_info() {
  */
 function islandora_download_clip(AbstractObject $object) {
   if (isset($_GET['clip'])) {
-    $is_https = isset($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) == 'on';
-    $http_protocol = $is_https ? 'https' : 'http';
-    $url = $http_protocol . '://' . $_SERVER['HTTP_HOST'] . $_GET['clip'];
+    $url = $_GET['clip'];
+    if (!preg_match('/^https?:\/\//', $url)) {
+      $is_https = isset($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) == 'on';
+      $http_protocol = $is_https ? 'https' : 'http';
+      $url = $http_protocol . '://' . $_SERVER['HTTP_HOST'] . $url;
+    }
     $filename = $object->label;
     header("Content-Disposition: attachment; filename=\"{$filename}.jpg\"");
     header("Content-type: image/jpeg");
@@ -1603,6 +1606,7 @@ function islandora_download_clip(AbstractObject $object) {
 function islandora_file_mimetype_mapping_alter(&$mapping) {
   $mime_detect = new MimeDetect();
   $types = $mime_detect->getMimeTypes();
+
   $diff = array_diff_key($types, $mapping['extensions']);
   foreach ($diff as $ext => $mime) {
     $mapping['mimetypes'][] = $mime;
@@ -1732,6 +1736,10 @@ function islandora_islandora_basic_collection_get_query_filters() {
  */
 function islandora_islandora_object_ingested(AbstractObject $object) {
   module_load_include('inc', 'islandora', 'includes/derivatives');
+  // Defer derivatives if necessary.
+  if (islandora_get_defer_derivatives_flag($object)) {
+    return;
+  }
   islandora_run_derivatives($object, NULL);
 }
 
@@ -1743,6 +1751,10 @@ function islandora_islandora_object_ingested(AbstractObject $object) {
  */
 function islandora_islandora_datastream_ingested(AbstractObject $object, AbstractDatastream $datastream) {
   module_load_include('inc', 'islandora', 'includes/derivatives');
+  // Defer derivatives if necessary.
+  if (islandora_get_defer_derivatives_flag($object)) {
+    return;
+  }
   islandora_run_derivatives($object, $datastream->id);
 }
 
@@ -1819,15 +1831,12 @@ function islandora_form_simpletest_test_form_alter(array &$form) {
 function islandora_repair_drupal_filter() {
 
   // Grab the config.
-  $path = drupal_get_path('module', 'islandora');
-  if (file_exists("$path/tests/test_config.ini")) {
-    $configuration = parse_ini_file("$path/tests/test_config.ini");
+  module_load_include('inc', 'islandora', 'tests/utilities/test_utility_abstraction');
+  try {
+    $configuration = IslandoraTestUtilityClass::getTestConfiguration();
   }
-  elseif (file_exists("$path/tests/default.test_config.ini")) {
-    $configuration = parse_ini_file("$path/tests/default.test_config.ini");
-  }
-  else {
-    drupal_set_message(t('Required default.test_config.ini/test_config.ini file not found'), 'error');
+  catch (Exception $e) {
+    drupal_set_message(t("Error parsing test configuration: %e", array('%e' => $e)), 'error');
     return FALSE;
   }
 
@@ -1944,6 +1953,8 @@ function islandora_menu_local_tasks_alter(&$data, $router_item, $root_path) {
         if ($tab['#link']['path'] == 'islandora/object/%/print_object') {
           if ($root_path == 'islandora/object/%') {
             $islandora_path = drupal_get_path('module', 'islandora');
+            $tab['#prefix'] = '<li>';
+            $tab['#suffix'] = '</li>';
             $tab['#theme'] = 'link';
             $tab['#text'] = theme('image', array(
               'path' => "$islandora_path/images/print-icon.png",
@@ -1965,5 +1976,16 @@ function islandora_menu_local_tasks_alter(&$data, $router_item, $root_path) {
         }
       }
     }
+  }
+}
+
+/**
+ * Implements hook_islandora_object_alter().
+ */
+function islandora_islandora_object_alter(AbstractObject $object, array &$context) {
+  // Prevent derivative creation during ingest if var is set.
+  if ($context['action'] == 'ingest' && variable_get('islandora_defer_derivatives_on_ingest', FALSE)) {
+    module_load_include('inc', 'islandora', 'includes/derivatives');
+    islandora_set_defer_derivatives_flag($object);
   }
 }
