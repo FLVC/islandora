@@ -25,10 +25,13 @@
  *   drupal_set_breadcrumb().
  */
 function islandora_get_breadcrumbs($object) {
-  $breadcrumbs = islandora_get_breadcrumbs_recursive($object->id, $object->repository);
-  array_pop($breadcrumbs);
-  $context = 'islandora';
-  drupal_alter('islandora_breadcrumbs', $breadcrumbs, $context, $object);
+  $breadcrumbs = array();
+  if (variable_get('islandora_render_drupal_breadcrumbs', TRUE)) {
+    $breadcrumbs = islandora_get_breadcrumbs_recursive($object->id, $object->repository);
+    array_pop($breadcrumbs);
+    $context = 'islandora';
+    drupal_alter('islandora_breadcrumbs', $breadcrumbs, $context, $object);
+  }
   return $breadcrumbs;
 }
 
@@ -51,6 +54,8 @@ function islandora_get_breadcrumbs($object) {
  *   An array of links representing the breadcrumb trail, "root" first.
  */
 function islandora_get_breadcrumbs_recursive($pid, FedoraRepository $repository, array &$context = NULL) {
+  module_load_include('inc', 'islandora', 'includes/utilities');
+
   // Before executing the query, we have a base case of accessing the top-level
   // collection.
   if ($context === NULL) {
@@ -77,48 +82,69 @@ function islandora_get_breadcrumbs_recursive($pid, FedoraRepository $repository,
     );
   }
   else {
-    $query_string = 'select $parentObject $title $content from <#ri>
-                      where (
-                        <info:fedora/' . $pid . '> <fedora-model:label> $title
-                        and $parentObject <fedora-model:hasModel> $content
-                        and (
-                          <info:fedora/' . $pid . '> <fedora-rels-ext:isMemberOfCollection> $parentObject
-                          or <info:fedora/' . $pid . '> <fedora-rels-ext:isMemberOf> $parentObject
-                          or <info:fedora/' . $pid . '> <fedora-rels-ext:isPartOf> $parentObject
-                        )
-                        and $parentObject <fedora-model:state> <info:fedora/fedora-system:def/model#Active>
-                      )
-                      minus $content <mulgara:is> <info:fedora/fedora-system:FedoraObject-3.0>
-                      minus $parentObject <mulgara:is> <info:fedora/' . $pid . '>
-                      order by $title desc';
-    $results = $repository->ri->itqlQuery($query_string);
 
-    if (count($results) > 0  && $context['level'] > 0) {
-      $parent = $results[0]['parentObject']['value'];
-      $this_title = $results[0]['title']['value'];
+    $query = <<<EOQ
+    PREFIX islandora-rels-ext: <http://islandora.ca/ontology/relsext#>
+    PREFIX fedora-rels-ext: <info:fedora/fedora-system:def/relations-external#>
+    SELECT DISTINCT ?object ?label
+    FROM <#ri>
+    WHERE {
+        <info:fedora/!pid> ?collection_predicate ?object;
+        <fedora-model:label> ?label .
+        ?object <fedora-model:state> <fedora-model:Active>
+        .
+        !optionals
+        !filters
+          }
+        !order
+EOQ;
+
+    $query_optionals = (array) module_invoke('islandora_xacml_api', 'islandora_basic_collection_get_query_optionals', 'view');
+    $query_filters = (array) module_invoke('islandora_xacml_api', 'islandora_basic_collection_get_query_filters');
+    $filter_map = function ($filter) {
+      return "FILTER($filter)";
+    };
+    $object = islandora_object_load($pid);
+    $breadcrumb_predicates = islandora_invoke_hook_list(ISLANDORA_BREADCRUMB_FILTER_PREDICATE_HOOK, $object->models, array($object));
+    $same_term_map = function ($predicate) {
+      return "sameTerm(?collection_predicate, <$predicate>)";
+    };
+    $collection_predicate_filters = array_map($same_term_map, $breadcrumb_predicates);
+    $query_filters[] = implode(' || ', $collection_predicate_filters);
+    $query_order = "ORDER BY DESC(?label)";
+    $query = format_string($query, array(
+      '!optionals' => !empty($query_optionals) ? ('OPTIONAL {{' . implode('} UNION {', $query_optionals) . '}}') : '',
+      '!filters' => implode(' ', array_map($filter_map, $query_filters)),
+      '!order' => $query_order,
+    ));
+    $query = format_string($query, array(
+      '!pid' => $pid,
+    ));
+    $results = $repository->ri->sparqlQuery($query, 'unlimited');
+
+    if (count($results) > 0 && $context['level'] > 0) {
+      $parent = $results[0]['object']['value'];
+      $this_label = $results[0]['label']['value'];
 
       $root_namespace = islandora_get_namespace($root);
       if ((count($results) > 1)&&(islandora_get_namespace($parent) != $root_namespace)) {
           for ($i=0; $i<count($results); $i++) {
-              if (islandora_get_namespace($results[$i]['parentObject']['value']) == $root_namespace) {
-                  $parent = $results[$i]['parentObject']['value'];
-                  $this_title = $results[$i]['title']['value'];
+              if (islandora_get_namespace($results[$i]['object']['value']) == $root_namespace) {
+                  $parent = $results[$i]['object']['value'];
+                  $this_label = $results[$i]['label']['value'];
                   break;
               }
           }
       }
 
-      if (empty($this_title)) {
-        $this_title = t('-');
+      if (empty($this_label)) {
+        $this_label = t('-');
       }
 
       $context['level']--;
-      return array_merge(
-        islandora_get_breadcrumbs_recursive($parent, $repository, $context),
-        array(
-          l($this_title, "islandora/object/$pid"),
-        )
-      );
+      return array_merge(islandora_get_breadcrumbs_recursive($parent, $repository, $context), array(
+        l($this_label, "islandora/object/$pid"),
+      ));
     }
     else {
       // Add an non-link, as we don't know how to get back to the root, and

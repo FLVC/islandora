@@ -56,7 +56,7 @@ function islandora_alter_datastream(AbstractObject $object, AbstractDatastream $
 }
 
 /**
- * Constructs a list of hooks from the given paramenters and invokes them.
+ * Constructs a list of hooks from the given parameters and invokes them.
  */
 function islandora_invoke_object_hooks($hook, array $models) {
   module_load_include('inc', 'islandora', 'includes/utilities');
@@ -64,7 +64,7 @@ function islandora_invoke_object_hooks($hook, array $models) {
 }
 
 /**
- * Constructs a list of hooks from the given paramenters and invokes them.
+ * Constructs a list of hooks from the given parameters and invokes them.
  */
 function islandora_invoke_datastream_hooks($hook, array $models, $dsid) {
   module_load_include('inc', 'islandora', 'includes/utilities');
@@ -115,10 +115,6 @@ class IslandoraFedoraRepository extends FedoraRepository {
       foreach ($object as $dsid => $datastream) {
         islandora_invoke_datastream_hooks(ISLANDORA_DATASTREAM_INGESTED_HOOK, $object->models, $dsid, $object, $datastream);
       }
-      // Fire of event if rules is enabled.
-      if (module_exists('rules')) {
-        rules_invoke_event('islandora_object_ingested', $object);
-      }
       return $ret;
     }
     catch (Exception $e) {
@@ -128,6 +124,45 @@ class IslandoraFedoraRepository extends FedoraRepository {
           '@msg' => $e->getMessage()), WATCHDOG_ERROR);
       throw $e;
     }
+  }
+
+  /**
+   * Constructs a Fedora Object.
+   *
+   * @see FedoraRepository::constructObject
+   */
+  public function constructObject($id = NULL, $create_uuid = NULL) {
+    // Enforces UUID when set, but allows to override if called
+    // with $create_uuid set to bool.
+    return parent::constructObject($id, static::useUUIDs($create_uuid));
+  }
+
+  /**
+   * Get the next PID(s) from Repo.
+   *
+   * @see FedoraRepository::getNextIdentifier()
+   */
+  public function getNextIdentifier($namespace = NULL, $create_uuid = NULL, $count = 1) {
+    // Enforces UUID when set, but allows to override if called
+    // with $create_uuid set to bool.
+    return parent::getNextIdentifier($namespace, static::useUUIDs($create_uuid), $count);
+  }
+
+  /**
+   * Helper for three-valued logic with UUIDs.
+   *
+   * @param bool|NULL $to_create
+   *   The variable to test.
+   *
+   * @return bool
+   *   If $to_create is NULL, the value of the
+   *   'islandora_basic_collection_generate_uuid' Drupal variable; otherwise,
+   *   the value of $to_create itself.
+   */
+  protected static function useUUIDs($to_create) {
+    return is_null($to_create) ?
+      variable_get('islandora_basic_collection_generate_uuid', FALSE) :
+      $to_create;
   }
 }
 
@@ -237,6 +272,54 @@ class IslandoraFedoraObject extends FedoraObject {
       throw $e;
     }
   }
+
+  /**
+   * Purge a datastream.
+   *
+   * Invokes datastream altered/purged hooks and calls the API-M method.
+   *
+   * @see FedoraObject::purgeObject()
+   */
+  public function purgeDatastream($id) {
+    $this->populateDatastreams();
+
+    if (!array_key_exists($id, $this->datastreams)) {
+      return FALSE;
+    }
+    $context = array(
+      'action' => 'purge',
+      'purge' => TRUE,
+      'delete' => FALSE,
+      'block' => FALSE,
+    );
+    try {
+      islandora_alter_datastream($this, $this[$id], $context);
+      $action = $context['block'] ? 'block' : FALSE;
+      $action = (!$action && $context['delete']) ? 'delete' : $action;
+      $action = !$action ? 'purge' : $action;
+      switch ($action) {
+        case 'block':
+          throw new Exception('Purge Datastream was blocked.');
+
+        case 'delete':
+          $this[$id]->state = 'D';
+          return array();
+
+        default:
+          $to_return = parent::purgeDatastream($id);
+          islandora_invoke_datastream_hooks(ISLANDORA_DATASTREAM_PURGED_HOOK, $this->models, $id, $this, $id);
+          return $to_return;
+      }
+    }
+    catch (Exception $e) {
+      watchdog('islandora', 'Failed to purge datastream @dsid from @pid</br>code: @code<br/>message: @msg', array(
+          '@pid' => $this->id,
+          '@dsid' => $id,
+          '@code' => $e->getCode(),
+          '@msg' => $e->getMessage()), WATCHDOG_ERROR);
+      throw $e;
+    }
+  }
 }
 
 class IslandoraRepositoryConnection extends RepositoryConnection {}
@@ -309,55 +392,6 @@ class IslandoraFedoraApiM extends FedoraApiM {
       throw new Exception('Modify Object was blocked.');
     }
     return parent::modifyObject($pid, $params);
-  }
-
-  /**
-   * Purge a datastream from from Fedora.
-   *
-   * @see FedoraApiM::purgeDatastream
-   */
-  public function purgeDatastream($pid, $dsid, $params = array()) {
-    $object = islandora_object_load($pid);
-    $context = array(
-      'action' => 'purge',
-      'purge' => TRUE,
-      'delete' => FALSE,
-      'block' => FALSE,
-    );
-    islandora_alter_datastream($object, $object[$dsid], $context);
-    try {
-      $action = $context['block'] ? 'block' : FALSE;
-      $action = (!$action && $context['delete']) ? 'delete' : $action;
-      $action = !$action ? 'purge' : $action;
-      switch ($action) {
-        case 'block':
-          throw new Exception('Purge Datastream was blocked.');
-
-        case 'delete':
-          $object[$dsid]->state = 'D';
-          return array();
-
-        default:
-          $ret = parent::purgeDatastream($pid, $dsid, $params);
-          // We need to remove this object from the cache and reload it as
-          // Tuque may not have an updated copy. That is the datastream could
-          // still be present within the object even though it's purged out of
-          // Fedora.
-          $tuque = islandora_get_tuque_connection();
-          $tuque->cache->delete($pid);
-          $non_cached_object = islandora_object_load($pid);
-          islandora_invoke_datastream_hooks(ISLANDORA_DATASTREAM_PURGED_HOOK, $non_cached_object->models, $dsid, $non_cached_object, $dsid);
-          return $ret;
-      }
-    }
-    catch (Exception $e) {
-      watchdog('islandora', 'Failed to purge datastream @dsid from @pid</br>code: @code<br/>message: @msg', array(
-          '@pid' => $pid,
-          '@dsid' => $dsid,
-          '@code' => $e->getCode(),
-          '@msg' => $e->getMessage()), WATCHDOG_ERROR);
-      throw $e;
-    }
   }
 
   /**

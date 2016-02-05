@@ -80,10 +80,6 @@ function islandora_ingest_form(array $form, array &$form_state, array $configura
  */
 function islandora_ingest_form_init_form_state_storage(array &$form_state, array $configuration) {
   if (empty($form_state['islandora'])) {
-    $objects = isset($configuration['objects']) ? $configuration['objects'] : array();
-    if (empty($objects)) {
-      $objects[] = islandora_ingest_form_prepare_new_object($configuration);
-    }
     $configuration['models'] = isset($configuration['models']) ? $configuration['models'] : array();
     // Make sure the models actually exist.
     foreach ($configuration['models'] as $key => $model) {
@@ -91,15 +87,15 @@ function islandora_ingest_form_init_form_state_storage(array &$form_state, array
         unset($configuration['models'][$key]);
       }
     }
-    // No need to persist the 'objects' within the configuration.
-    unset($configuration['objects']);
     // Required for step hooks.
     $form_state['islandora'] = array(
       'step_id' => NULL,
-      'objects' => $objects,
+      'objects' => $configuration['objects'],
       'shared_storage' => $configuration,
       'step_storage' => array(),
     );
+    // No need to persist the 'objects' within the configuration.
+    unset($configuration['objects']);
     // Must be called after $form_state['islandora'] is initialized, otherwise,
     // the values in 'islandora' would not be availible to the step hooks.
     $form_state['islandora']['step_id'] = islandora_ingest_form_get_first_step_id($form_state);
@@ -134,33 +130,6 @@ function islandora_ingest_form_get_last_step_id(array &$form_state) {
   $steps = islandora_ingest_form_get_steps($form_state);
   $keys = array_keys($steps);
   return array_pop($keys);
-}
-
-/**
- * Prepares a new object based on the given configuration.
- *
- * @param array $configuration
- *   The list of key/value pairs of configuration.
- *
- * @return NewFedoraObject
- *   The new object.
- */
-function islandora_ingest_form_prepare_new_object(array $configuration) {
-  module_load_include('inc', 'islandora', 'includes/utilities');
-  if (empty($configuration['object'])) {
-    $message = islandora_deprecated('7.x-1.2', t('Please use "objects" as the default ingest form configuration property.'));
-    trigger_error(filter_xss($message), E_USER_DEPRECATED);
-    // ID is more specific than namespace so it will take precedence.
-    $id = isset($configuration['namespace']) ? $configuration['namespace'] : 'islandora';
-    $id = isset($configuration['id']) ? $configuration['id'] : $id;
-    $label = isset($configuration['label']) ? $configuration['label'] : 'New Object';
-    $relationship_map = function($o) {
-      return array('relationship' => 'isMemberOfCollection', 'pid' => $o);
-    };
-    $relationships = empty($configuration['collections']) ? array() : array_map($relationship_map, $configuration['collections']);
-    return islandora_prepare_new_object($id, $label, array(), array(), $relationships);
-  }
-  return $configuration['object'];
 }
 
 /**
@@ -499,6 +468,14 @@ function islandora_ingest_form_stepify(array $form, array &$form_state, array $s
   );
   $form['prev'] = $first_form_step ? NULL : islandora_ingest_form_previous_button($form_state);
   $form['next'] = $last_form_step ? islandora_ingest_form_ingest_button($form_state) : islandora_ingest_form_next_button($form_state);
+  // Duplicate next button and hide it at the top of the form so that the form
+  // always triggers "next" if the user submits the form with the enter key.
+  if (!is_null($form['prev'])) {
+    $form['hidden_next'] = $form['next'];
+    $form['hidden_next']['#weight'] = -99;
+    $form['hidden_next']['#prefix'] = '<div style="display:none;">';
+    $form['hidden_next']['#suffix'] = '</div>';
+  }
   // Allow for a hook_form_FORM_ID_alter().
   drupal_alter(array('form_' . $step['form_id'], 'form'), $form, $form_state, $step['form_id']);
   return $form;
@@ -726,7 +703,7 @@ function islandora_ingest_form_ingest_button(array &$form_state) {
  */
 function islandora_ingest_form_ingest_button_process(array $element) {
   $settings['spinner'][$element['#id']] = array(
-    'message' => t('Please be patient while the the page loads.'),
+    'message' => t('Please be patient while the page loads.'),
     'options' => array(
       'lines' => 10,
       'length' => 20,
@@ -754,6 +731,7 @@ function islandora_ingest_form_ingest_button_process(array $element) {
       "$islandora_path/js/spinner.js",
     ),
   );
+  $element['#attributes']['class'][] = 'islandora-spinner-submit';
   return $element;
 }
 
@@ -799,7 +777,7 @@ function islandora_ingest_form_submit(array $form, array &$form_state) {
         WATCHDOG_ERROR
       );
       drupal_set_message(
-        t('A problem occured while ingesting "@label" (ID: @pid), please notifiy the administrator.',
+        t('A problem occured while ingesting "@label" (ID: @pid), please notify the administrator.',
         array('@label' => $object->label, '@pid' => $object->id)),
         'error'
       );
