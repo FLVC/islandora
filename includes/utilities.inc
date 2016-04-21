@@ -303,6 +303,7 @@ function islandora_namespace_accessible($id) {
   if (variable_get('islandora_namespace_restriction_enforced', FALSE)) {
     $namespace = islandora_get_namespace($id);
     $allowed_namespaces = islandora_get_allowed_namespaces();
+    $allowed_namespaces[] = 'ir';
     return in_array($namespace, $allowed_namespaces);
   }
   return TRUE;
