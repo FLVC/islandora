@@ -257,6 +257,7 @@ function template_preprocess_islandora_objects(array &$variables) {
  *   - link: A string containing a textual HTML link to the object.
  *   - thumb: A string containing an image HTML link to the object.
  *   - description: A string containing a description of the object.
+ *   - pid: The object's PID.
  */
 function islandora_objects_object_mapper($object_id) {
   $o = islandora_object_load($object_id);
@@ -298,6 +299,7 @@ function islandora_objects_object_mapper($object_id) {
       'link' => l($title, $url, $link_options),
       'thumb' => l($img, $url, $link_options),
       'description' => $description,
+      'pid' => $o->id,
     );
   }
   else {
@@ -308,6 +310,7 @@ function islandora_objects_object_mapper($object_id) {
       'link' => l(t('(Unknown)'), $url, $link_options),
       'thumb' => '',
       'description' => '',
+      'pid' => $object_id,
     );
   }
 }
@@ -542,8 +545,9 @@ function theme_islandora_datastream_revert_link(array $vars) {
  */
 function theme_islandora_datastream_edit_link(array $vars) {
   $datastream = $vars['datastream'];
+  module_load_include('inc', 'islandora', 'includes/utilities');
 
-  $edit_registry = module_invoke_all('islandora_edit_datastream_registry', $datastream->parent, $datastream);
+  $edit_registry = islandora_build_datastream_edit_registry($datastream);
 
   $can_edit = count($edit_registry) > 0 && islandora_datastream_access(ISLANDORA_METADATA_EDIT, $datastream);
 

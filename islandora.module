@@ -52,6 +52,7 @@ define('ISLANDORA_UPDATE_RELATED_OBJECTS_PROPERTIES_HOOK', 'islandora_update_rel
 define('ISLANDORA_METADATA_OBJECT_ALTER', 'islandora_metadata_object');
 define('ISLANDORA_METADATA_OBJECT_DESCRIPTION_ALTER', 'islandora_metadata_object_description');
 define('ISLANDORA_BREADCRUMB_FILTER_PREDICATE_HOOK', 'islandora_get_breadcrumb_query_predicates');
+define('ISLANDORA_EDIT_DATASTREAM_REGISTRY_HOOK', 'islandora_edit_datastream_registry');
 
 // @todo Add Documentation.
 define('ISLANDORA_OBJECT_INGESTED_HOOK', 'islandora_object_ingested');
@@ -372,14 +373,6 @@ function islandora_menu() {
     'access arguments' => array(ISLANDORA_REGENERATE_DERIVATIVES, 4),
     'load arguments' => array(2),
   );
-  $items['islandora/object/%islandora_object/download_clip'] = array(
-    'page callback' => 'islandora_download_clip',
-    'page arguments' => array(2),
-    'type' => MENU_CALLBACK,
-    'access callback' => 'islandora_object_access',
-    'access arguments' => array(ISLANDORA_VIEW_OBJECTS, 2),
-    'load arguments' => array(2),
-  );
   $items['islandora/event-status'] = array(
     'title' => 'Event Status',
     'page callback' => 'islandora_event_status',
@@ -442,6 +435,11 @@ function islandora_admin_paths() {
 
 /**
  * Implements hook_theme().
+ *
+ * The theme entries 'islandora_objects' and 'islandora_objects_subset'
+ * utilize the same template file. When theming, be sure to utilize the theme
+ * name, and not the template file names. Similar situation found here:
+ * @link https://jira.duraspace.org/browse/ISLANDORA-934. @endlink
  */
 function islandora_theme() {
   return array(
@@ -986,8 +984,6 @@ function islandora_default_islandora_manage_overview_object(AbstractObject $obje
 function islandora_edit_object(AbstractObject $object) {
   module_load_include('inc', 'islandora', 'includes/breadcrumb');
   module_load_include('inc', 'islandora', 'includes/utilities');
-  drupal_set_title($object->label);
-  drupal_set_breadcrumb(islandora_get_breadcrumbs($object));
   $output = array();
   foreach (islandora_build_hook_list(ISLANDORA_EDIT_HOOK, $object->models) as $hook) {
     $temp = module_invoke_all($hook, $object);
@@ -1050,9 +1046,6 @@ function islandora_view_default_object() {
 function islandora_view_object(AbstractObject $object) {
   module_load_include('inc', 'islandora', 'includes/breadcrumb');
   module_load_include('inc', 'islandora', 'includes/utilities');
-
-  drupal_set_title($object->label);
-  drupal_set_breadcrumb(islandora_get_breadcrumbs($object));
 
   // Optional pager parameters.
   $page_number = (empty($_GET['page'])) ? '1' : $_GET['page'];
@@ -1390,9 +1383,9 @@ function islandora_islandora_required_objects(IslandoraTuque $connection) {
   $root_collection->label = 'Top-level Collection';
   $root_collection->models = 'islandora:collectionCModel';
   // Collection Policy Datastream.
-  $datastream = $root_collection->constructDatastream('COLLECTION_POLICY', 'X');
+  $datastream = $root_collection->constructDatastream('COLLECTION_POLICY', 'M');
   $datastream->label = 'Collection policy';
-  $datastream->mimetype = 'text/xml';
+  $datastream->mimetype = 'application/xml';
   $datastream->setContentFromFile("$module_path/xml/islandora_collection_policy.xml", FALSE);
   $root_collection->ingestDatastream($datastream);
   // TN Datastream.
@@ -1635,31 +1628,6 @@ function islandora_entity_property_info() {
 }
 
 /**
- * Menu callback downloads the given clip.
- */
-function islandora_download_clip(AbstractObject $object) {
-  if (isset($_GET['clip'])) {
-    $url = $_GET['clip'];
-    if (!preg_match('/^https?:\/\//', $url)) {
-      $is_https = isset($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) == 'on';
-      $http_protocol = $is_https ? 'https' : 'http';
-      $url = $http_protocol . '://' . $_SERVER['HTTP_HOST'] . $url;
-    }
-    $filename = $object->label;
-    header("Content-Disposition: attachment; filename=\"{$filename}.jpg\"");
-    header("Content-type: image/jpeg");
-    header("Content-Transfer-Encoding: binary");
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_BINARYTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_HEADER, 0);
-    curl_setopt($ch, CURLOPT_URL, $url);
-    $response = curl_exec($ch);
-    curl_close($ch);
-  }
-  exit();
-}
-
-/**
  * Implements hook_file_mimetype_mapping_alter().
  *
  * Grab custom Islandora mime type list
@@ -1843,11 +1811,15 @@ function islandora_islandora_datastream_ingested(AbstractObject $object, Abstrac
  * equal to the current ingested datastream's id. Force is set to TRUE such that
  * existing derivatives will be updated to reflect the change in the source.
  */
-function islandora_islandora_datastream_modified(AbstractObject $object, AbstractDatastream $datastream) {
+function islandora_islandora_datastream_modified(AbstractObject $object, AbstractDatastream $datastream, $params) {
   module_load_include('inc', 'islandora', 'includes/derivatives');
+  $params += array(
+    'dsid' => $datastream->id,
+  );
   $logging_results = islandora_do_derivatives($object, array(
     'source_dsid' => $datastream->id,
     'force' => TRUE,
+    'ds_modified_params' => $params,
   ));
   islandora_derivative_logging($logging_results);
   islandora_conditionally_clear_cache();
