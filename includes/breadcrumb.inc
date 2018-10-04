@@ -78,7 +78,7 @@ function islandora_get_breadcrumbs_recursive($pid, FedoraRepository $repository,
 
     return array(
       l(t('Home'), '<front>'),
-      l($title, 'islandora'),
+      l($title, ''),
     );
   }
   else {
