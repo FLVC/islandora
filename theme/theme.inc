@@ -6,9 +6,9 @@
  */
 
 /**
- * Implements hook_preprocess_theme().
+ * Implements template_preprocess_HOOK().
  */
-function islandora_preprocess_islandora_default_edit(array &$variables) {
+function template_preprocess_islandora_default_edit(array &$variables) {
   global $base_url;
   $islandora_object = $variables['islandora_object'];
   $datastreams = array();
@@ -21,7 +21,7 @@ function islandora_preprocess_islandora_default_edit(array &$variables) {
   $header[] = array('data' => t('Type'));
   $header[] = array('data' => t('Mime type'));
   $header[] = array('data' => t('Size'));
-  if (user_access(ISLANDORA_VIEW_DATASTREAM_HISTORY)) {
+  if (islandora_object_access(ISLANDORA_VIEW_DATASTREAM_HISTORY, $islandora_object)) {
     $header[] = array('data' => t('Versions'));
   }
 
@@ -60,14 +60,16 @@ function islandora_preprocess_islandora_default_edit(array &$variables) {
           'datastream' => $ds,
         )),
       );
-      // Add new datastream content as the lastest version.
-      $row[] = array(
-        'class' => 'datastream-replace',
-        'data' => theme('islandora_datastream_replace_link', array(
-          'datastream' => $ds,
-        )),
-      );
     }
+    elseif (islandora_object_access(ISLANDORA_VIEW_DATASTREAM_HISTORY, $islandora_object)) {
+      $row[] = array();
+    }
+    $row[] = array(
+      'class' => 'datastream-replace',
+      'data' => theme('islandora_datastream_replace_link', array(
+        'datastream' => $ds,
+      )),
+    );
     $row[] = array(
       'class' => 'datastream-download',
       'data' => theme('islandora_datastream_download_link', array(
@@ -108,9 +110,9 @@ function islandora_preprocess_islandora_default_edit(array &$variables) {
 }
 
 /**
- * Implements hook_preprocess_theme().
+ * Implements template_preprocess_HOOK().
  */
-function islandora_preprocess_islandora_default(&$variables) {
+function template_preprocess_islandora_default(&$variables) {
   drupal_add_js('misc/form.js');
   drupal_add_js('misc/collapse.js');
   $islandora_object = $variables['islandora_object'];
@@ -162,9 +164,9 @@ function islandora_preprocess_islandora_default(&$variables) {
 }
 
 /**
- * Implements hook_preprocess_theme().
+ * Implements template_preprocess_HOOK().
  */
-function islandora_preprocess_islandora_object_print(array &$variables) {
+function template_preprocess_islandora_object_print(array &$variables) {
   // Apply the print CSS in non print context.
   $only_print_media = function($o) {
     return $o['media'] == 'print';
@@ -624,9 +626,9 @@ function theme_islandora_datastream_regenerate_link(array $vars) {
 }
 
 /**
- * Implements hook_preprocess().
+ * Implements template_preprocess_HOOK().
  */
-function islandora_preprocess_islandora_dublin_core_display(array &$variables) {
+function template_preprocess_islandora_dublin_core_display(array &$variables) {
   $islandora_object = $variables['islandora_object'];
   if (islandora_datastream_access(ISLANDORA_VIEW_OBJECTS, $islandora_object['DC'])) {
     try {
@@ -641,9 +643,9 @@ function islandora_preprocess_islandora_dublin_core_display(array &$variables) {
 }
 
 /**
- * Implements hook_preprocess().
+ * Implements template_preprocess_HOOK().
  */
-function islandora_preprocess_islandora_dublin_core_description(array &$variables) {
+function template_preprocess_islandora_dublin_core_description(array &$variables) {
   $islandora_object = $variables['islandora_object'];
   if (islandora_datastream_access(ISLANDORA_VIEW_OBJECTS, $islandora_object['DC'])) {
     try {
@@ -655,4 +657,30 @@ function islandora_preprocess_islandora_dublin_core_description(array &$variable
     }
   }
   $variables['dc_array'] = isset($dc_object) ? $dc_object->asArray() : array();
+  if (isset($variables['dc_array']['dc:description']['value'])) {
+    $variables['dc_array']['dc:description']['value'] = nl2br(filter_xss($variables['dc_array']['dc:description']['value']));
+  }
+}
+
+/**
+ * Implements template_preprocess_HOOK().
+ */
+function template_preprocess_islandora_object_overview(array &$variables) {
+  $object = $variables['islandora_object'];
+  $cmodels = $object->models;
+  $links = array();
+  foreach ($cmodels as $cmodel) {
+    if ($cmodel != 'fedora-system:FedoraObject-3.0') {
+      $o = islandora_object_load($cmodel);
+      if (is_object($o)) {
+        $links[] = array(l($o->label, "islandora/object/{$o->id}"));
+      }
+      else {
+        $links[] = array(t("@cmodel  - (This content model is not in this Islandora repository.)", array('@cmodel' => $cmodel)));
+      }
+    }
+  }
+  $pluralized_identifier = format_plural(count($links), 'Islandora content model', 'Islandora content models');
+  $variables['header'] = t("This object's behavior is defined by the @identifier", array("@identifier" => $pluralized_identifier));
+  $variables['list'] = theme('item_list', array('items' => $links));
 }
