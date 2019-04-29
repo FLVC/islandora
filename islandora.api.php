@@ -152,7 +152,7 @@ function hook_islandora_edit_object_alter(&$object, &$rendered) {
  *     If 'block' is set to TRUE, it will take precedence.
  *     Defaults to FALSE,
  *   - params: An associative array, only present when the action is 'modify'.
- *     The key value pairs repersent what values will be changed. The params
+ *     The key value pairs represent what values will be changed. The params
  *     will match the same params as passed to FedoraApiM::modifyObject().
  *
  * @see FedoraApiM::modifyObject()
@@ -203,7 +203,7 @@ function hook_cmodel_pid_islandora_object_alter(AbstractObject $object, array &$
  *     If 'block' is set to TRUE, it will take precedence.
  *     Defaults to FALSE,
  *   - params: An associative array, only present when the action is 'modify'.
- *     The key value pairs repersent what values will be changed. The params
+ *     The key value pairs represent what values will be changed. The params
  *     will match the same params as passed to FedoraApiM::modifyDatastream().
  *
  * @see FedoraApiM::modifyDatastream()
@@ -353,7 +353,7 @@ function hook_islandora_datastream_modified(AbstractObject $object, AbstractData
  *
  * @see hook_islandora_datastream_modified()
  */
-function hook_cmodel_pid_islandora_datastream_modified(AbstractObject $object, AbstractDatastream $datastream, array $params) {
+function hook_cmodel_pid_dsid_islandora_datastream_modified(AbstractObject $object, AbstractDatastream $datastream, array $params) {
 
 }
 
@@ -377,7 +377,7 @@ function hook_islandora_datastream_purged(AbstractObject $object, $dsid) {
  *
  * @see hook_islandora_datastream_purged()
  */
-function hook_cmodel_pid_islandora_datastream_purged(AbstractObject $object, $dsid) {
+function hook_cmodel_pid_dsid_islandora_datastream_purged(AbstractObject $object, $dsid) {
 
 }
 
@@ -746,7 +746,7 @@ function hook_cmodel_pid_islandora_derivative() {
 /**
  * Allows for the altering of defined derivative functions.
  */
-function hook_islandora_derivative_alter(&$derivatives, AbstractObject $object, $ds_modified_params = array()) {
+function hook_islandora_derivative_alter(&$derivatives, AbstractObject $object = NULL, $ds_modified_params = array()) {
   foreach ($derivatives as $key => $derivative) {
     if ($derivative['destination_dsid'] == 'TN') {
       unset($derivatives[$key]);
@@ -906,4 +906,90 @@ function hook_islandora_edit_datastream_registry_alter(&$edit_registry, $context
  */
 function hook_islandora_repository_connection_construction_alter(RepositoryConnection $instance) {
   $instance->userAgent = "Tuque/cURL";
+}
+
+/**
+ * Allow a overridable backend for generating breadcrumbs.
+ *
+ * Stolen shamelessly from @adam-vessey.
+ *
+ * @return array
+ *   Should return an associative array mapping unique (module-prefixed,
+ *   preferably) keys to associative arrays containing:
+ *   - title: A human-readable title for the backend.
+ *   - callable: A PHP callable to call for this backend, implementing
+ *     callback_islandora_basic_collection_query_backends().
+ *   - file: An optional file to load before attempting to call the callable.
+ */
+function hook_islandora_breadcrumbs_backends() {
+  return array(
+    'awesome_backend' => array(
+      'title' => t('Awesome Backend'),
+      'callable' => 'callback_islandora_breadcrumbs_backends',
+    ),
+  );
+}
+
+/**
+ * Generate an array of links for breadcrumbs leading to $object, root first.
+ *
+ * Stolen shamelessly from @adam-vessey.
+ *
+ * @param AbstractObject $object
+ *   The object to generate breadcrumbs for.
+ *
+ * @return array
+ *   Array of links from root to the parent of $object.
+ */
+function callback_islandora_breadcrumbs_backends(AbstractObject $object) {
+  // Do something to get an array of breadcrumb links for $object, root first.
+  return array($root_link, $collection_link, $object_link);
+}
+
+/**
+ * Permit modules to alter the filename of a downloaded datastream.
+ *
+ * @param string $filename
+ *   The filename being created.
+ *
+ * @param AbstractDatastream $datastream
+ *   The datastream object being downloaded.
+ */
+function hook_islandora_datastream_filename_alter(&$filename, AbstractDatastream $datastream) {
+
+  // Example taken from islandora_datastream_filenamer.
+  $pattern = variable_get('islandora_ds_download_filename_pattern', FALSE);
+  if ($pattern) {
+    $filename = token_replace($pattern,
+      array('datastream' => $datastream),
+      array('clear' => TRUE)
+    );
+  }
+}
+
+/**
+ * Allow solution packs to register relationships used for children.
+ *
+ * @param string|array $cmodels
+ *   This takes either:
+ *      - string: the string 'all'. Function returns all child relationships.
+ *      - array: an array of cmodel PIDs to return the relationships for.
+ *
+ * @return array
+ *   - prefix (array): This is is a valid snip-it of SPARQL to register
+ *     prefixes used in the predicates array.
+ *   - predicate (array): This array contains predicates used by the solution
+ *     pack for child objects.
+ */
+function hook_islandora_solution_pack_child_relationships($cmodels) {
+  if ($cmodels === 'all' || in_array('my:cmodel_pid', $cmodels)) {
+    return array(
+      'prefix' => array('PREFIX islandora: <http://islandora.ca/ontology/relsext#>'),
+      'predicate' => array(
+        '<fedora-rels-ext:isMemberOfCollection>',
+        '<fedora-rels-ext:isMemberOf>',
+        '<islandora:isPageOf>',
+      ),
+    );
+  }
 }

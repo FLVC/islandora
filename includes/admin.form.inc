@@ -22,6 +22,17 @@ function islandora_repository_admin(array $form, array &$form_state) {
   $url = islandora_system_settings_form_default_value('islandora_base_url', 'http://localhost:8080/fedora', $form_state);
   $restrict_namespaces = islandora_system_settings_form_default_value('islandora_namespace_restriction_enforced', FALSE, $form_state);
   $confirmation_message = islandora_admin_settings_form_repository_access_message($url);
+
+  $breadcrumb_backend_options = module_invoke_all('islandora_breadcrumbs_backends');
+  $map_to_title = function ($backend) {
+    return $backend['title'];
+  };
+  // In case the selected breadcrumb backend is no longer available.
+  $breadcrumb_backend = variable_get('islandora_breadcrumbs_backends', ISLANDORA_BREADCRUMB_LEGACY_BACKEND);
+  if (!isset($breadcrumb_backend_options[$breadcrumb_backend])) {
+    $breadcrumb_backend = ISLANDORA_BREADCRUMB_LEGACY_BACKEND;
+  }
+
   $form = array(
     'islandora_tabs' => array(
       '#type' => 'vertical_tabs',
@@ -85,6 +96,12 @@ function islandora_repository_admin(array $form, array &$form_state) {
             useful if derivatives are to be created by an external service.'),
           '#default_value' => variable_get('islandora_defer_derivatives_on_ingest', FALSE),
         ),
+        'islandora_render_context_ingeststep' => array(
+          '#type' => 'checkbox',
+          '#title' => t('Render applicable Content Model label(s) during ingest steps'),
+          '#description' => t('This enables contextual titles, displaying Content Model label(s), to be added on top of ingest forms.'),
+          '#default_value' => variable_get('islandora_render_context_ingeststep', FALSE),
+        ),
         'islandora_show_print_option' => array(
           '#type' => 'checkbox',
           '#title' => t('Show print option on objects'),
@@ -97,6 +114,18 @@ function islandora_repository_admin(array $form, array &$form_state) {
           '#description' => t('Larger sites may experience a notable performance improvement when disabled due to how breadcrumbs are constructed.'),
           '#default_value' => variable_get('islandora_render_drupal_breadcrumbs', TRUE),
         ),
+        'islandora_breadcrumbs_backends' => array(
+          '#type' => 'radios',
+          '#title' => t('Breadcrumb generation'),
+          '#description' => t('How breadcrumbs for Islandora objects are generated for display.'),
+          '#default_value' => $breadcrumb_backend,
+          '#options' => array_map($map_to_title, $breadcrumb_backend_options),
+          '#states' => array(
+            'visible' => array(
+              ':input[name="islandora_render_drupal_breadcrumbs"]' => array('checked' => TRUE),
+            ),
+          ),
+        ),
         'islandora_risearch_use_itql_when_necessary' => array(
           '#type' => 'checkbox',
           '#title' => t('Use iTQL for particular queries'),
@@ -108,6 +137,12 @@ function islandora_repository_admin(array $form, array &$form_state) {
           '#title' => t('Require a file upload during ingest'),
           '#description' => t('During the ingest workflow, make the OBJ file upload step mandatory.'),
           '#default_value' => variable_get('islandora_require_obj_upload', TRUE),
+        ),
+        'islandora_deny_inactive_and_deleted' => array(
+          '#type' => 'checkbox',
+          '#title' => t('Lock down inactive and deleted objects.'),
+          '#description' => t('Require a separate permission to access inactive and deleted objects.'),
+          '#default_value' => variable_get('islandora_deny_inactive_and_deleted', FALSE),
         ),
       ),
       'islandora_namespace' => array(
