@@ -698,6 +698,15 @@ function islandora_get_allowed_namespaces() {
  */
 function islandora_get_content_models($ignore_system_namespace = TRUE) {
   module_load_include('inc', 'islandora', 'includes/utilities');
+  module_load_include('inc', 'islandora', 'includes/solution_packs');
+  $enabled_solution_packs = islandora_solution_packs_get_required_objects();
+  $enabled_content_models = array();
+  foreach ($enabled_solution_packs as $solution_pack_module => $solution_pack_info) {
+    $objects = array_filter($solution_pack_info['objects']);
+    foreach ($objects as $object) {
+      $enabled_content_models[] = $object->id;
+    }
+  }
   $tuque = islandora_get_tuque_connection();
   $query = "PREFIX fm: <" . FEDORA_MODEL_URI . ">
             PREFIX fr: <" . FEDORA_RELS_EXT_URI . ">
@@ -723,6 +732,7 @@ function islandora_get_content_models($ignore_system_namespace = TRUE) {
     $namespace = islandora_get_namespace($content_model);
     $ignore = $ignore_system_namespace && $namespace == 'fedora-system';
     $ignore |= !islandora_namespace_accessible($namespace);
+    $ignore |= !in_array($content_model, $enabled_content_models);
     if (!$ignore) {
       $content_models[$content_model] = array('pid' => $content_model, 'label' => $label);
     }
