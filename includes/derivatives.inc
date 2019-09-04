@@ -155,8 +155,8 @@ function islandora_derivative_logging(array $logging_results) {
         // call_user_func until such time as the @ignore changes
         // are merged into the standard release for Coder.
         call_user_func('watchdog', 'islandora_derivatives', $message['message'], isset($message['message_sub']) ? $message['message_sub'] : array(), isset($message['severity']) ? $message['severity'] : WATCHDOG_NOTICE);
-        $result_message = $result_messages['incomplete'];
-        $message_status = 'warning';
+        //$result_message = $result_messages['incomplete'];
+        //$message_status = 'warning';
       }
       drupal_set_message(filter_xss($result_message), filter_xss($message_status), FALSE);
 
